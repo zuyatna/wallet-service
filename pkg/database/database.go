@@ -27,7 +27,7 @@ func SetupPostgres(dsn string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	log.Println("Successfully connected to database")
+	log.Println("✅ PostgreSQL connected successfully!")
 	return db, nil
 }
 
@@ -47,6 +47,6 @@ func SetupRedis(addr string, password string) (*redis.Client, error) {
 		return nil, err
 	}
 
-	log.Println("Successfully connected to redis")
+	log.Println("✅ Redis connected successfully!")
 	return client, nil
 }

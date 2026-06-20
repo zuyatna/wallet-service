@@ -11,25 +11,28 @@ import (
 )
 
 func main() {
-	log.Print("starting wallet service...")
+	log.Println("Starting Wallet Service...")
 
+	//  Load the .env file
 	err := godotenv.Load(".env")
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Println("Warning: No .env file found, reading from system environment")
 	}
 
+	// Read the variables using standard os.Getenv
 	postgresDSN := os.Getenv("DB_DSN")
 	redisAddr := os.Getenv("REDIS_ADDR")
 	redisPassword := os.Getenv("REDIS_PASSWORD")
 
+	// Quick validation to make sure we aren't passing empty strings
 	if postgresDSN == "" || redisAddr == "" {
-		log.Fatal("Configuration error: DB_DSN or REDIS_ADDR environment variables not set")
+		log.Fatalf("❌ Configuration error: DB_DSN or REDIS_ADDR is missing in environment")
 	}
 
-	// connect to postgreSQL
+	// Connect to PostgreSQL
 	db, err := database.SetupPostgres(postgresDSN)
 	if err != nil {
-		log.Fatal("Error connecting to database")
+		log.Fatalf("❌ Failed to connect to PostgreSQL: %v", err)
 	}
 	defer func(db *sql.DB) {
 		err := db.Close()
@@ -38,10 +41,10 @@ func main() {
 		}
 	}(db)
 
-	// connect to redis
+	// Connect to Redis
 	redisClient, err := database.SetupRedis(redisAddr, redisPassword)
 	if err != nil {
-		log.Fatal("Error connecting to redis")
+		log.Fatalf("❌ Failed to connect to Redis: %v", err)
 	}
 	defer func(redisClient *redis.Client) {
 		err := redisClient.Close()
@@ -50,5 +53,5 @@ func main() {
 		}
 	}(redisClient)
 
-	log.Print("App configured via env, ready to start server")
+	log.Println("🚀 App configured via Environment Variables. Ready to go!")
 }
