@@ -30,3 +30,13 @@ type WalletLedger struct {
 	Description   string          `json:"description" db:"description"`
 	CreatedAt     time.Time       `json:"created_at" db:"created_at"`
 }
+
+type TopUpRequest struct {
+	ReferenceID             string          `json:"reference_id" validate:"required,uuid"`
+	SourceBankCode          string          `json:"source_bank" validate:"required"`
+	SourceAccountNumber     string          `json:"source_account_number" validate:"required"`
+	DestinationWalletType   string          `json:"destination_wallet_type" validate:"required"`
+	DestinationWalletNumber string          `json:"destination_wallet_number" validate:"required"`
+	Amount                  decimal.Decimal `json:"amount" validate:"required,gt=0"`        // Must be greater than 0
+	Currency                string          `json:"currency" validate:"required,oneof=IDR"` // Only accept specific currency
+}
