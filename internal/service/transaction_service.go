@@ -29,7 +29,7 @@ func (s *TransactionService) ProcessTopUp(ctx context.Context, req domain.TopUpR
 	// Everything inside this statement will succeed together or fail together
 	err := s.repo.ExecuteTx(ctx, func(txRepo domain.WalletRepository) error {
 		// Verify the wallet exists
-		wallet, err := txRepo.GetWalletByID(ctx, req.DestinationWalletNumber)
+		wallet, err := txRepo.GetWalletByNumber(ctx, req.DestinationWalletNumber)
 		if err != nil {
 			return errors.New("destination wallet not found")
 		}
@@ -63,6 +63,8 @@ func (s *TransactionService) ProcessTopUp(ctx context.Context, req domain.TopUpR
 		}
 
 		ledgerID := ledgerUUID.String()
+
+		// Incrementing a balance safely
 		newBalance := wallet.Balance.Add(req.Amount)
 
 		ledger := &domain.WalletLedger{

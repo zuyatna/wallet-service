@@ -31,6 +31,7 @@ func (h *TransactionHandler) TopUp(c *gin.Context) {
 			"error":   "Invalid request payload",
 			"details": err.Error(),
 		})
+		return
 	}
 
 	// Pass to the service layer

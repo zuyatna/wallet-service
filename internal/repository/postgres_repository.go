@@ -58,20 +58,19 @@ func (r *PostgresWalletRepository) exec(ctx context.Context, query string, args 
 	return r.db.ExecContext(ctx, query, args...)
 }
 
-// GetWalletByID fetches the current wallet state
-func (r *PostgresWalletRepository) GetWalletByID(ctx context.Context, walletID string) (*domain.Wallet, error) {
+// GetWalletByNumber fetches the wallet by its wallet_number
+func (r *PostgresWalletRepository) GetWalletByNumber(ctx context.Context, walletNumber string) (*domain.Wallet, error) {
 	query := `
 		SELECT id, user_id, wallet_type, wallet_number, currency, balance, created_at, updated_at
 		FROM wallets 
-		WHERE id = $1
+		WHERE wallet_number = $1
 	`
 
-	// Check if we are inside a transaction block to use r.tx instead of r.db
 	var row *sql.Row
 	if r.tx != nil {
-		row = r.tx.QueryRowContext(ctx, query, walletID)
+		row = r.tx.QueryRowContext(ctx, query, walletNumber)
 	} else {
-		row = r.db.QueryRowContext(ctx, query, walletID)
+		row = r.db.QueryRowContext(ctx, query, walletNumber)
 	}
 
 	var w domain.Wallet
