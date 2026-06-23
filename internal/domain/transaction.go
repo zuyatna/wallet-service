@@ -32,11 +32,11 @@ type WalletLedger struct {
 }
 
 type TopUpRequest struct {
-	ReferenceID             string          `json:"reference_id" validate:"required,uuid"`
-	SourceBankCode          string          `json:"source_bank" validate:"required"`
-	SourceAccountNumber     string          `json:"source_account_number" validate:"required"`
-	DestinationWalletType   string          `json:"destination_wallet_type" validate:"required"`
-	DestinationWalletNumber string          `json:"destination_wallet_number" validate:"required"`
-	Amount                  decimal.Decimal `json:"amount" validate:"required,gt=0"`        // Must be greater than 0
-	Currency                string          `json:"currency" validate:"required,oneof=IDR"` // Only accept specific currency
+	ReferenceID             string          `json:"reference_id" binding:"required,uuid"`
+	SourceBankCode          string          `json:"source_bank" binding:"required"`
+	SourceAccountNumber     string          `json:"source_account_number" binding:"required"`
+	DestinationWalletType   string          `json:"destination_wallet_type" binding:"required"`
+	DestinationWalletNumber string          `json:"destination_wallet_number" binding:"required"`
+	Amount                  decimal.Decimal `json:"amount" binding:"required,gt=0"`        // Must be greater than 0
+	Currency                string          `json:"currency" binding:"required,oneof=IDR"` // Only accept specific currency
 }
