@@ -3,21 +3,33 @@ package service
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 	"wallet-service/internal/domain"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/shopspring/decimal"
 )
 
+type EventPublisher interface {
+	PublishTopUpSuccess(ctx context.Context, tx *domain.Transaction) error
+}
+
 // TransactionService is the struct that hold our repository interface
 type TransactionService struct {
-	repo domain.WalletRepository
+	repo        domain.WalletRepository
+	redisClient *redis.Client
+	publisher   EventPublisher
 }
 
 // NewTransactionService is the complete flow for adding money to a user's wallet
-func NewTransactionService(repo domain.WalletRepository) *TransactionService {
-	return &TransactionService{repo: repo}
+func NewTransactionService(repo domain.WalletRepository, redisClient *redis.Client, publisher EventPublisher) *TransactionService {
+	return &TransactionService{
+		repo:        repo,
+		redisClient: redisClient,
+		publisher:   publisher,
+	}
 }
 
 func (s *TransactionService) ProcessTopUp(ctx context.Context, req domain.TopUpRequest) error {
@@ -25,9 +37,19 @@ func (s *TransactionService) ProcessTopUp(ctx context.Context, req domain.TopUpR
 		return errors.New("top-up amount must be greater than zero")
 	}
 
+	lockKey := "wallet_lock:" + req.DestinationWalletNumber
+
+	locked, err := s.redisClient.SetNX(ctx, lockKey, "locked", 5*time.Second).Result()
+	if err != nil || !locked {
+		return errors.New("wallet is currently processing another transaction, please try again")
+	}
+	defer s.redisClient.Del(ctx, lockKey)
+
+	var completedTx *domain.Transaction
+
 	// The ACID transaction block
 	// Everything inside this statement will succeed together or fail together
-	err := s.repo.ExecuteTx(ctx, func(txRepo domain.WalletRepository) error {
+	err = s.repo.ExecuteTx(ctx, func(txRepo domain.WalletRepository) error {
 		// Verify the wallet exists
 		wallet, err := txRepo.GetWalletByNumber(ctx, req.DestinationWalletNumber)
 		if err != nil {
@@ -41,7 +63,7 @@ func (s *TransactionService) ProcessTopUp(ctx context.Context, req domain.TopUpR
 		}
 
 		transactionID := transactionUUID.String()
-		tx := &domain.Transaction{
+		completedTx = &domain.Transaction{
 			ID:              transactionID,
 			RefenceID:       req.ReferenceID,
 			WalletID:        wallet.ID,
@@ -52,7 +74,7 @@ func (s *TransactionService) ProcessTopUp(ctx context.Context, req domain.TopUpR
 			UpdatedAt:       time.Now(),
 		}
 
-		if err := txRepo.CreateTransaction(ctx, tx); err != nil {
+		if err := txRepo.CreateTransaction(ctx, completedTx); err != nil {
 			return err // Triggers a ROLLBACK
 		}
 
@@ -88,6 +110,15 @@ func (s *TransactionService) ProcessTopUp(ctx context.Context, req domain.TopUpR
 
 		return nil // Triggers a COMMIT
 	})
+
+	// If the database transaction was successful (err == nil), publish the async event!
+	if err == nil && completedTx != nil {
+		go func() {
+			if pubErr := s.publisher.PublishTopUpSuccess(context.Background(), completedTx); pubErr != nil {
+				log.Printf("Failed to publish to RabbitMQ, but DB saved successfully: %v\n", pubErr)
+			}
+		}()
+	}
 
 	return err
 }
