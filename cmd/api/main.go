@@ -8,6 +8,7 @@ import (
 	"wallet-service/internal/handler"
 	"wallet-service/internal/repository"
 	"wallet-service/internal/service"
+	"wallet-service/pkg/broker"
 	"wallet-service/pkg/database"
 
 	"github.com/gin-gonic/gin"
@@ -27,47 +28,41 @@ func main() {
 		log.Println("Warning: No .env file found, reading from system environment")
 	}
 
-	// Read the variables using standard os.Getenv
-	postgresDSN := os.Getenv("DB_DSN")
-	redisAddr := os.Getenv("REDIS_ADDR")
-	redisPassword := os.Getenv("REDIS_PASSWORD")
+	db, err := database.SetupPostgres(os.Getenv("DB_DSN"))
+	if err != nil {
+		log.Fatalf("Error connecting to database: %v", err)
+	}
+	defer func(db *sql.DB) {
+		err := db.Close()
+		if err != nil {
+			log.Fatalf("Error closing database connection: %v", err)
+		}
+	}(db)
+
+	redisClient, err := database.SetupRedis(os.Getenv("REDIS_HOST"), os.Getenv("REDIS_PASSWORD"))
+	if err != nil {
+		log.Fatalf("Error connecting to redis: %v", err)
+	}
+	defer func(redisClient *redis.Client) {
+		err := redisClient.Close()
+		if err != nil {
+			log.Fatalf("Error closing redis connection: %v", err)
+		}
+	}(redisClient)
+
+	rabbitPublisher, err := broker.NewRabbitMQPublisher(os.Getenv("RABBITMQ_URL"))
+	if err != nil {
+		log.Fatalf("Error creating rabbitmq publisher: %v", err)
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	// Quick validation to make sure we aren't passing empty strings
-	if postgresDSN == "" || redisAddr == "" {
-		log.Fatalf("❌ Configuration error: DB_DSN or REDIS_ADDR is missing in environment")
-	}
-
-	// Connect to PostgreSQL
-	db, err := database.SetupPostgres(postgresDSN)
-	if err != nil {
-		log.Fatalf("❌ Failed to connect to PostgreSQL: %v", err)
-	}
-	defer func(db *sql.DB) {
-		err := db.Close()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}(db)
-
-	// Connect to Redis
-	redisClient, err := database.SetupRedis(redisAddr, redisPassword)
-	if err != nil {
-		log.Fatalf("❌ Failed to connect to Redis: %v", err)
-	}
-	defer func(redisClient *redis.Client) {
-		err := redisClient.Close()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}(redisClient)
-
 	// Dependency injection
 	walletRepo := repository.NewPostgresWalletRepository(db)
-	transactionService := service.NewTransactionService(walletRepo)
+	transactionService := service.NewTransactionService(walletRepo, redisClient, rabbitPublisher)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
 
 	router := gin.Default()
@@ -90,14 +85,13 @@ func main() {
 		})
 	})
 
-	// Grouping api routes
-	api := router.Group("/api/v1")
-	{
-		api.POST("/transactions/topup", transactionHandler.TopUp)
-	}
+	router.POST("/api/v1/transactions/topup", transactionHandler.TopUp)
 
-	// Start Server
-	log.Printf("🚀 Server is running on port %s\n", port)
+	log.Println("🚀 Server is running on port 8080")
+	err = router.Run(":" + port)
+	if err != nil {
+		return
+	}
 	if err := router.Run(":" + port); err != nil {
 		log.Fatalf("❌ Failed to start server: %v", err)
 	}
